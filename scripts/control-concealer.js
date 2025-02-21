@@ -1,412 +1,437 @@
-(async () => {
-  class ControlConcealer {
-    constructor() {
-      this.view = 'prod';
-      this.edit = false;
-    }
-
-    async initialize() {
-      await this.loadHiddenElements();
-    }
-
-    async add_controls(html) {
-      const myVar = 'Example value to be passed to handlebars';
-      const path = '/modules/control-concealer/templates';
-      // Get the handlebars output
-      const myHtml = await renderTemplate(`${path}/controlConcealerUI.html`, { myVar });
-      const main_controls = html.find('.main-controls');
-      main_controls.prepend(myHtml);
-
-      let config_button = html.find('#control-concealer .control-concealer-config');
-      let dev_button = html.find('#control-concealer .control-concealer-dev');
-      let prod_button = html.find('#control-concealer .control-concealer-prod');
-
-      config_button.click(() => {
-        this.changeEditMode();
-      });
-      dev_button.click(() => {
-        if (this.edit) return ui.notifications.error('CONTROLCONCEALER.error.EditActive', { localize: true });
-        this.view = 'dev';
-        $(document).find('.scene-control.active').click();
-        this.updateButtons();
-      });
-      prod_button.click(() => {
-        if (config_button.hasClass('active')) return ui.notifications.error('CONTROLCONCEALER.error.EditActive', { localize: true });
-        this.view = 'prod';
-        $(document).find('.scene-control.active').click();
-        this.updateButtons();
-      });
-
-      this.updateButtons();
-    }
-
-    updateButtons() {
-      let config_button = $(document).find('#control-concealer .control-concealer-config');
-      let dev_button = $(document).find('#control-concealer .control-concealer-dev');
-      let prod_button = $(document).find('#control-concealer .control-concealer-prod');
-
-      dev_button.toggleClass('active', this.view === 'dev');
-      prod_button.toggleClass('active', this.view === 'prod');
-      config_button.toggleClass('active', this.edit);
-
-      this.loadHiddenElements();
-    }
-
-    changeEditMode() {
-      let config_button = document.getElementById('control-concealer').getElementsByClassName('control-concealer-config')[0];
-      if (config_button.classList.contains('active')) {
-        this.edit = false;
-        config_button.classList.toggle('active', false);
-        this.endEditMode();
-
-        ui.notifications.info('CONTROLCONCEALER.info.EditModeEnd', { localize: true });
-      } else {
-        this.edit = true;
-        config_button.classList.toggle('active', true);
-        this.activateEditMode();
-
-        ui.notifications.info('CONTROLCONCEALER.info.EditModeActive', { localize: true });
-      }
-    }
-
-    activateEditMode() {
-      document.getElementById('controls').classList.toggle('hide-active', false);
-      document.getElementById('sidebar').classList.toggle('hide-active', false);
-      this.addSidebarOverlay();
-      $('#controls').find('li').contextmenu(this.hideElement);
-    }
-
-    addSidebarOverlay() {
-      let overlayCol = $('<div class="item-overlay-col tabs"></div>');
-      $('#sidebar-tabs').append(overlayCol);
-      let add_overlay = (element) => {
-        let overlay_item = $('<div>&nbsp;</div>');
-        overlay_item.addClass('item-overlay');
-        overlay_item.attr('data-original-tab', $(element).data('tab'));
-        overlayCol.append(overlay_item);
-        overlay_item.contextmenu(this.hideSidebarElement);
-      };
-      $('#sidebar-tabs')
-        .find('.item')
-        .each((index, element) => {
-          add_overlay(element);
-        });
-      $('#sidebar-tabs')
-        .find('.collapse')
-        .each((index, element) => {
-          add_overlay(element);
-        });
-    }
-
-    removeSidebarOverlay() {
-      $('#sidebar-tabs').find('.item-overlay-col').remove();
-    }
-
-    endEditMode() {
-      this.saveHiddenElements();
-
-      document.getElementById('controls').classList.toggle('hide-active', true);
-      document.getElementById('sidebar').classList.toggle('hide-active', true);
-      this.removeSidebarOverlay();
-      $('#controls').find('li').off('contextmenu', this.hideElement);
-    }
-
-    async saveHiddenElements() {
-      let hiddencontrols = [];
-      let hiddentools = [];
-      let hiddentabs = [];
-
-      let scenecontrols = document.getElementById('controls').getElementsByClassName('scene-control');
-      let subcontrols = document.getElementById('controls').getElementsByClassName('sub-controls');
-
-      let sidebartabs = document.getElementById('sidebar-tabs').getElementsByClassName('item');
-      for (let i = 0; i < scenecontrols.length; i++) {
-        const scenecontrol = scenecontrols[i];
-        let hiddenscenecontrol = (() => {
-          const control = ui.controls.controls[i];
-          let data = {};
-          for (const key in control) {
-            if (key !== 'activeTool' && key !== 'tools' && key !== 'onClick' && Object.prototype.hasOwnProperty.call(control, key)) {
-              data[key] = control[key];
-            }
-          }
-          data.tools = [];
-          return data;
-        })();
-        if (scenecontrol.classList.contains('control-concealer-hide')) {
-          hiddencontrols.push(hiddenscenecontrol);
-          hiddentools.push({});
-        } else {
-          hiddencontrols.push({});
-          const tools = subcontrols[i]?.getElementsByClassName('control-tool') ?? [];
-          let toolshidden = false;
-          for (let j = 0; j < tools.length; j++) {
-            const tool = tools[j];
-            if (tool.classList.contains('control-concealer-hide')) {
-              toolshidden = true;
-              const hiddentool = (() => {
-                const tool = ui.controls.controls[i].tools[j];
-                let data = {};
-                for (const key in tool) {
-                  if (key !== 'activeTool' && key !== 'tools' && key !== 'onClick' && Object.prototype.hasOwnProperty.call(tool, key)) {
-                    data[key] = tool[key];
-                  }
-                }
-                return data;
-              })();
-              hiddenscenecontrol.tools.push(hiddentool);
-            } else {
-              hiddenscenecontrol.tools.push({});
-            }
-          }
-          if (toolshidden) hiddentools.push(hiddenscenecontrol);
-          else hiddentools.push({});
-        }
-      }
-
-      for (let i = 0; i < sidebartabs.length; i++) {
-        const tab = sidebartabs[i];
-        if (tab.classList.contains('control-concealer-hide')) {
-          hiddentabs.push(tab.dataset.tab);
-        }
-      }
-
-      let dev_button = document.getElementById('control-concealer').getElementsByClassName('control-concealer-dev')[0];
-      let savetab = 'prod-tab';
-      if (dev_button.classList.contains('active')) savetab = 'dev-tab';
-
-      await game.user.setFlag('control-concealer', savetab, { hiddencontrols: hiddencontrols, hiddentools: hiddentools, hiddentabs: hiddentabs });
-    }
-
-    invert_element_color(element) {
-      let bg = window.getComputedStyle(element, null).getPropertyValue('background-color');
-      let fg = window.getComputedStyle(element, null).getPropertyValue('color');
-      element.dataset.originalColor = fg;
-      element.dataset.originalBackgroundColor = bg;
-      element.style.color = this.invert_color(fg);
-      element.style.backgroundColor = this.invert_color(bg);
-    }
-
-    reset_element_color(element) {
-      if (element.dataset.originalColor) element.style.color = element.dataset.originalColor;
-      if (element.dataset.originalBackgroundColor) element.style.backgroundColor = element.dataset.originalBackgroundColor;
-    }
-
-    invert_color(color) {
-      let newcolor = color;
-      if (color.startsWith('rgba')) {
-        newcolor = 'rgba(';
-        let colors = color.replace('rgba(', '');
-        colors = colors.replace(')', '');
-        colors = colors.split(', ');
-        for (let i = 0; i < colors.length - 1; i++) {
-          colors[i] = 255 - parseInt(colors[i]);
-        }
-        newcolor += colors.join(', ');
-        newcolor += ')';
-      } else if (color.startsWith('rgb')) {
-        newcolor = 'rgb(';
-        let colors = color.replace('rgb(', '');
-        colors = colors.replace(')', '');
-        colors = colors.split(', ');
-        for (let i = 0; i < colors.length; i++) {
-          colors[i] = 255 - parseInt(colors[i]);
-        }
-        newcolor += colors.join(', ');
-        newcolor += ')';
-      }
-      return newcolor;
-    }
-
-    async _renderSceneControls(control, html, data) {
-      await this.add_controls(html);
-      await this.loadHiddenElements();
-
-      if (!document.getElementById('control-concealer')) return;
-
-      let config_button = document.getElementById('control-concealer').getElementsByClassName('control-concealer-config')[0];
-      if (config_button.classList.contains('active')) {
-        this.activateEditMode();
-      }
-    }
-
-    async loadHiddenElements() {
-      let savetab = 'prod-tab';
-      if (document.getElementById('control-concealer')) {
-        let dev_button = document.getElementById('control-concealer').getElementsByClassName('control-concealer-dev')[0];
-        if (dev_button.classList.contains('active')) savetab = 'dev-tab';
-      }
-      let tab = game.user.getFlag('control-concealer', savetab) || {};
-
-      let scenecontrols = document.getElementById('controls').getElementsByClassName('scene-control');
-      let subcontrols = document.getElementById('controls').getElementsByClassName('sub-controls');
-      // disable all hidden status
-      for (let i = 0; i < scenecontrols.length; i++) {
-        this.toggle_hidden(scenecontrols[i], false);
-        const tools = subcontrols[i]?.getElementsByClassName('control-tool') ?? [];
-        for (let j = 0; j < tools.length; j++) {
-          this.toggle_hidden(tools[j], false);
-        }
-      }
-      let sidebartabs = document.getElementById('sidebar-tabs')?.getElementsByClassName('item') ?? [];
-      for (let i = 0; i < sidebartabs.length; i++) {
-        this.toggle_hidden(sidebartabs[i], false);
-      }
-
-      if (Object.keys(tab).length === 0) return;
-
-      let hiddencontrols = tab.hiddencontrols;
-      let hiddentools = tab.hiddentools;
-      let hiddentabs = tab.hiddentabs;
-
-      let hasControlMissmatch = false;
-      let hasUnfixedControlMissmatch = false;
-      // enable hidden status for hidden elements
-      for (let i = 0; i < hiddencontrols.length; i++) {
-        const hiddencontrol = hiddencontrols[i];
-        const hiddencontroltools = hiddentools[i];
-
-        const getSceneControl = (ctrl, scenecontrols, index) => {
-          if (Object.keys(ctrl).length > 0) {
-            if (!this.compareControl(ctrl, index)) {
-              hasControlMissmatch = true;
-              const actualIndex = this.findControl(ctrl);
-              if (actualIndex === -1) {
-                console.log("Control concealer | couldn't find: ", ctrl);
-                hasUnfixedControlMissmatch = true;
-              } else return [scenecontrols[actualIndex], actualIndex];
-            } else {
-              return [scenecontrols[index], index];
-            }
-          }
-          return [];
-        };
-        const getControlTool = (tool, scenetools, ctrl_index, tool_index) => {
-          if (Object.keys(tool).length > 0) {
-            if (!this.compareTool(tool, ctrl_index, tool_index)) {
-              hasControlMissmatch = true;
-              const actualIndex = this.findTool(tool, ctrl_index);
-              if (actualIndex === -1) {
-                console.log("Control concealer | couldn't find: ", tool);
-                hasUnfixedControlMissmatch = true;
-              } else return [scenetools[actualIndex], actualIndex];
-            } else {
-              return [scenetools[tool_index], tool_index];
-            }
-          }
-          return [];
-        };
-
-        const [scenecontrol] = getSceneControl(hiddencontrol, scenecontrols, i);
-        const [scenecontroltools, actualIndex] = getSceneControl(hiddencontroltools, scenecontrols, i);
-        if (scenecontrol) {
-          this.toggle_hidden(scenecontrol, true);
-        } else if (scenecontroltools) {
-          const scenetools = subcontrols[i].getElementsByClassName('control-tool');
-          for (let j = 0; j < hiddencontroltools.tools.length; j++) {
-            const hiddentool = hiddencontroltools.tools[j];
-            const [scenetool] = getControlTool(hiddentool, scenetools, actualIndex, j);
-            if (scenetool) {
-              this.toggle_hidden(scenetool, true);
-            }
-          }
-        }
-      }
-
-      const sidebartabs_arr = Array.from(sidebartabs);
-      for (let i = 0; i < hiddentabs.length; i++) {
-        const htab = sidebartabs_arr.find((element) => element.dataset.tab === hiddentabs[i]);
-        if (htab) {
-          this.toggle_hidden(htab, true);
-        } else {
-          console.log("Control concealer | couldn't find sidebar tab: ", hiddentabs[i]);
-          hasUnfixedControlMissmatch = true;
-        }
-      }
-
-      if (hasControlMissmatch) {
-        if (hasUnfixedControlMissmatch) {
-          ui.notifications.error('CONTROLCONCEALER.error.ControlMissmatch', { localize: true });
-        } else {
-          ui.notifications.warn('CONTROLCONCEALER.warning.ControlMissmatchFixed', { localize: true });
-          await this.saveHiddenElements();
-        }
-      }
-      document.getElementById('controls').classList.toggle('hide-active', true);
-      document.getElementById('sidebar').classList.toggle('hide-active', true);
-    }
-
-    findControl(target) {
-      return ui.controls.controls.findIndex((control) => control.icon === target.icon && control.name === target.name && control.title === target.title);
-    }
-
-    findTool(target, ctrl_index) {
-      return ui.controls.controls[ctrl_index].tools.findIndex((tool) => tool.icon === target.icon && tool.name === target.name && tool.title === target.title);
-    }
-
-    compareControl(source, index) {
-      if (ui.controls.controls.length <= index) {
-        return false;
-      }
-      const target = ui.controls.controls[index];
-      for (const key in source) {
-        if (key !== 'activeTool' && key !== 'tools' && key !== 'onClick' && Object.prototype.hasOwnProperty.call(source, key)) {
-          if (!Object.prototype.hasOwnProperty.call(target, key) || source[key] !== target[key]) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-
-    compareTool(source, control_index, tool_index) {
-      if (ui.controls.controls.length <= control_index) {
-        return false;
-      }
-      if (ui.controls.controls[control_index].tools.length <= tool_index) {
-        return false;
-      }
-      const target = ui.controls.controls[control_index].tools[tool_index];
-      for (const key in source) {
-        if (key !== 'activeTool' && key !== 'tools' && key !== 'onClick' && Object.prototype.hasOwnProperty.call(source, key)) {
-          if (!Object.prototype.hasOwnProperty.call(target, key) || source[key] !== target[key]) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }
-
-    toggle_hidden(element, value) {
-      if (element.classList.contains('control-concealer-top')) return;
-      if (element.classList.contains('control-concealer-tab')) return;
-      if (element.id === 'control-concealer') return;
-      if (value === undefined) {
-        value = !element.classList.contains('control-concealer-hide');
-      }
-      element.classList.toggle('control-concealer-hide', value);
-      if (value === true) this.invert_element_color(element);
-      else this.reset_element_color(element);
-    }
-
-    hideElement = (event) => {
-      this.toggle_hidden(event.currentTarget);
-      this.saveHiddenElements();
-      return false;
+class ControlConcealer {
+  constructor() {
+    this.state = {
+      view: 'prod',
+      isEditMode: false
     };
+    this.bindEventHandlers();
+    this.initializeHooks();
+  }
 
-    hideSidebarElement = (event) => {
-      console.log(`hide ${$(event.currentTarget).attr('data-original-tab')}`);
-      let target = $(event.currentTarget)
-        .parent()
-        .parent()
-        .find(`.item[data-tab='${$(event.currentTarget).attr('data-original-tab')}']`);
-      this.toggle_hidden(target[0]);
-      // this.saveHiddenElements();
-      return false;
+  // Core getters for commonly accessed elements
+  get elements() {
+    return {
+      controls: document.getElementById('controls'),
+      sidebar: document.getElementById('sidebar'),
+      sidebarTabs: document.getElementById('sidebar-tabs'),
+      controlConcealer: document.getElementById('control-concealer')
     };
   }
-  let controlConcealer = new ControlConcealer();
-  Hooks.once('canvasReady', () => controlConcealer.initialize());
-  Hooks.on('renderSceneControls', (control, html, data) => controlConcealer._renderSceneControls(control, html, data));
+
+  get sceneControls() {
+    return this.elements.controls.getElementsByClassName('scene-control');
+  }
+
+  get subControls() {
+    return this.elements.controls.getElementsByClassName('sub-controls');
+  }
+
+  get sidebarItems() {
+    return this.elements.sidebarTabs?.getElementsByClassName('item') ?? [];
+  }
+
+  get buttons() {
+    return {
+      config: $('#control-concealer .control-concealer-config'),
+      dev: $('#control-concealer .control-concealer-dev'),
+      prod: $('#control-concealer .control-concealer-prod')
+    };
+  }
+
+  // Initialization methods
+  initializeHooks() {
+    Hooks.once('canvasReady', () => this.initialize());
+    Hooks.on('renderSceneControls', (control, html, data) => this.onRenderSceneControls(control, html, data));
+  }
+
+  bindEventHandlers() {
+    this.hideElement = this.hideElement.bind(this);
+    this.hideSidebarElement = this.hideSidebarElement.bind(this);
+  }
+
+  async initialize() {
+    await this.loadHiddenElements();
+  }
+
+  // UI Setup and Controls
+  async onRenderSceneControls(control, html, data) {
+    await this.addControls(html);
+    await this.loadHiddenElements();
+
+    if (!this.elements.controlConcealer) return;
+
+    const configButton = this.elements.controlConcealer.getElementsByClassName('control-concealer-config')[0];
+    if (configButton?.classList.contains('active')) {
+      this.activateEditMode();
+    }
+  }
+
+  async addControls(html) {
+    const templateData = { myVar: 'Example value to be passed to handlebars' };
+    const templatePath = '/modules/control-concealer/templates/controlConcealerUI.html';
+    const controlHtml = await renderTemplate(templatePath, templateData);
+
+    html.find('.main-controls').prepend(controlHtml);
+    this.setupControlButtons(html);
+    this.updateButtons();
+  }
+
+  setupControlButtons(html) {
+    const buttons = {
+      config: html.find('#control-concealer .control-concealer-config'),
+      dev: html.find('#control-concealer .control-concealer-dev'),
+      prod: html.find('#control-concealer .control-concealer-prod')
+    };
+
+    buttons.config.click(() => this.toggleEditMode());
+    buttons.dev.click(() => this.setView('dev'));
+    buttons.prod.click(() => this.setView('prod'));
+  }
+
+  // View and Button Management
+  setView(newView) {
+    if (this.state.isEditMode) {
+      return ui.notifications.error('CONTROLCONCEALER.error.EditActive', { localize: true });
+    }
+
+    this.state.view = newView;
+    $(document).find('.scene-control.active').click();
+    this.updateButtons();
+  }
+
+  updateButtons() {
+    const buttons = this.buttons;
+    this.toggleActiveClass(buttons.dev[0], this.state.view === 'dev');
+    this.toggleActiveClass(buttons.prod[0], this.state.view === 'prod');
+    this.toggleActiveClass(buttons.config[0], this.state.isEditMode);
+    this.loadHiddenElements();
+  }
+
+  toggleActiveClass(element, isActive) {
+    element.classList.toggle('active', isActive);
+  }
+
+  // Edit Mode Management
+  toggleEditMode() {
+    this.state.isEditMode = !this.state.isEditMode;
+
+    if (this.state.isEditMode) {
+      this.activateEditMode();
+      ui.notifications.info('CONTROLCONCEALER.info.EditModeActive', { localize: true });
+    } else {
+      this.deactivateEditMode();
+      ui.notifications.info('CONTROLCONCEALER.info.EditModeEnd', { localize: true });
+    }
+  }
+
+  activateEditMode() {
+    this.elements.controls.classList.remove('hide-active');
+    this.elements.sidebar.classList.remove('hide-active');
+    this.addSidebarOverlay();
+    $('#controls').find('li').contextmenu(this.hideElement);
+  }
+
+  deactivateEditMode() {
+    this.saveHiddenElements();
+    this.elements.controls.classList.add('hide-active');
+    this.elements.sidebar.classList.add('hide-active');
+    this.removeSidebarOverlay();
+    $('#controls').find('li').off('contextmenu', this.hideElement);
+  }
+
+  // Element Management
+  addSidebarOverlay() {
+    const overlayCol = $('<div class="item-overlay-col tabs"></div>');
+    $('#sidebar-tabs').append(overlayCol);
+
+    const addOverlayItem = (element) => {
+      const overlay = $('<div>&nbsp;</div>').addClass('item-overlay').attr('data-original-tab', $(element).data('tab')).contextmenu(this.hideSidebarElement);
+      overlayCol.append(overlay);
+    };
+
+    $('#sidebar-tabs')
+      .find('.item, .collapse')
+      .each((_, element) => addOverlayItem(element));
+  }
+
+  removeSidebarOverlay() {
+    $('#sidebar-tabs').find('.item-overlay-col').remove();
+  }
+
+  // Element Visibility and Color Management
+  toggleHidden(element, value) {
+    if (this.shouldSkipElement(element)) return;
+
+    const shouldHide = value ?? !element.classList.contains('control-concealer-hide');
+    element.classList.toggle('control-concealer-hide', shouldHide);
+
+    if (shouldHide) {
+      this.invertElementColor(element);
+    } else {
+      this.resetElementColor(element);
+    }
+  }
+
+  resetAllHiddenStates() {
+    const scenecontrols = this.sceneControls;
+    const subcontrols = this.subControls;
+    const sidebartabs = this.sidebarItems;
+
+    [...scenecontrols].forEach((control) => this.toggleHidden(control, false));
+    [...subcontrols].forEach((subcontrol) => [...subcontrol.getElementsByClassName('control-tool')].forEach((tool) => this.toggleHidden(tool, false)));
+    [...sidebartabs].forEach((tab) => this.toggleHidden(tab, false));
+  }
+
+  shouldSkipElement(element) {
+    return element.classList.contains('control-concealer-top') || element.classList.contains('control-concealer-tab') || element.id === 'control-concealer';
+  }
+
+  invertElementColor(element) {
+    const style = window.getComputedStyle(element, null);
+    const colors = {
+      foreground: style.getPropertyValue('color'),
+      background: style.getPropertyValue('background-color')
+    };
+
+    element.dataset.originalColor = colors.foreground;
+    element.dataset.originalBackgroundColor = colors.background;
+
+    element.style.color = this.invertColor(colors.foreground);
+    element.style.backgroundColor = this.invertColor(colors.background);
+  }
+
+  resetElementColor(element) {
+    if (element.dataset.originalColor) {
+      element.style.color = element.dataset.originalColor;
+    }
+    if (element.dataset.originalBackgroundColor) {
+      element.style.backgroundColor = element.dataset.originalBackgroundColor;
+    }
+  }
+
+  invertColor(color) {
+    if (!color.startsWith('rgb')) return color;
+
+    const [type, values] = color.split('(');
+    const numbers = values.slice(0, -1).split(',').map(Number);
+    const inverted = numbers.map((value, i) => (i < 3 ? 255 - value : value));
+
+    return `${type}(${inverted.join(',')})`;
+  }
+
+  // Data Management and Validation
+  async saveHiddenElements() {
+    const controls = { hidden: [], tools: [] };
+    const hiddenTabs = [];
+
+    // Process scene controls and tools
+    Array.from(this.sceneControls).forEach((sceneControl, i) => {
+      const controlData = this.getControlData(sceneControl, i);
+
+      if (sceneControl.classList.contains('control-concealer-hide')) {
+        controls.hidden.push(controlData);
+        controls.tools.push({});
+      } else {
+        controls.hidden.push({});
+        const toolsData = this.processTools(this.subControls[i], i, controlData);
+        controls.tools.push(toolsData.hasHidden ? controlData : {});
+      }
+    });
+
+    // Process sidebar tabs
+    Array.from(this.sidebarItems).forEach((tab) => {
+      if (tab.classList.contains('control-concealer-hide')) {
+        hiddenTabs.push(tab.dataset.tab);
+      }
+    });
+
+    const saveTab = this.state.view === 'dev' ? 'dev-tab' : 'prod-tab';
+    await game.user.setFlag('control-concealer', saveTab, {
+      hiddencontrols: controls.hidden,
+      hiddentools: controls.tools,
+      hiddentabs: hiddenTabs
+    });
+  }
+
+  getControlData(control, index) {
+    const data = {};
+    const sourceControl = ui.controls.controls[index];
+
+    Object.entries(sourceControl)
+      .filter(([key]) => !['activeTool', 'tools', 'onClick'].includes(key))
+      .forEach(([key, value]) => (data[key] = value));
+
+    data.tools = [];
+    return data;
+  }
+
+  processTools(subcontrol, controlIndex, controlData) {
+    let hasHidden = false;
+    const tools = subcontrol?.getElementsByClassName('control-tool') ?? [];
+
+    Array.from(tools).forEach((tool, j) => {
+      if (tool.classList.contains('control-concealer-hide')) {
+        hasHidden = true;
+        controlData.tools.push(this.getControlData(tool, j));
+      } else {
+        controlData.tools.push({});
+      }
+    });
+
+    return { hasHidden, controlData };
+  }
+
+  async loadHiddenElements() {
+    const saveTab = this.state.view === 'dev' ? 'dev-tab' : 'prod-tab';
+    const tab = game.user.getFlag('control-concealer', saveTab) || {};
+    if (Object.keys(tab).length === 0) return;
+
+    this.resetAllHiddenStates();
+    const validation = this.validateControls(tab.hiddencontrols, tab.hiddentools);
+
+    if (validation.validControls.size > 0) {
+      this.applyValidatedControls(validation.validControls);
+    }
+
+    this.applySidebarTabs(tab.hiddentabs);
+    this.handleValidationResults(validation);
+    this.updateDisplayState();
+  }
+
+  compareObject(source, target) {
+    return Object.entries(source)
+      .filter(([key]) => !['activeTool', 'tools', 'onClick'].includes(key))
+      .every(([key, value]) => Object.prototype.hasOwnProperty.call(target, key) && target[key] === value);
+  }
+
+  validateControls(hiddenControls, hiddenTools) {
+    const results = {
+      hasMismatch: false,
+      hasUnfixedMismatch: false,
+      validControls: new Map()
+    };
+
+    hiddenControls.forEach((control, i) => {
+      if (Object.keys(control).length === 0) return;
+
+      const controlIndex = this.findControl(control);
+      if (controlIndex === -1) {
+        results.hasMismatch = results.hasUnfixedMismatch = true;
+        console.log("Control concealer | couldn't find control:", control);
+        return;
+      }
+
+      if (controlIndex !== i) results.hasMismatch = true;
+
+      results.validControls.set(i, {
+        originalIndex: i,
+        newIndex: controlIndex,
+        tools: this.validateTools(hiddenTools[i], controlIndex)
+      });
+    });
+
+    return results;
+  }
+
+  findControl(target) {
+    return ui.controls.controls.findIndex((control) => control.icon === target.icon && control.name === target.name && control.title === target.title);
+  }
+
+  findTool(target, ctrl_index) {
+    if (!ui.controls.controls[ctrl_index]?.tools) return -1;
+
+    return ui.controls.controls[ctrl_index].tools.findIndex((tool) => tool.icon === target.icon && tool.name === target.name && tool.title === target.title);
+  }
+
+  validateTools(tools, controlIndex) {
+    const validTools = new Map();
+
+    if (!tools || !tools.tools) return validTools;
+
+    tools.tools.forEach((tool, i) => {
+      if (Object.keys(tool).length === 0) return;
+
+      const toolIndex = this.findTool(tool, controlIndex);
+      if (toolIndex === -1) {
+        console.log("Control concealer | couldn't find tool:", tool);
+        return;
+      }
+
+      validTools.set(i, toolIndex);
+    });
+
+    return validTools;
+  }
+
+  applyValidatedControls(validControls) {
+    const scenecontrols = this.sceneControls;
+    const subcontrols = this.subControls;
+
+    validControls.forEach((data, i) => {
+      const control = scenecontrols[data.newIndex];
+      if (control) {
+        this.toggleHidden(control, true);
+
+        if (data.tools.size > 0) {
+          const tools = subcontrols[data.newIndex]?.getElementsByClassName('control-tool');
+          if (tools) {
+            data.tools.forEach((newIndex, originalIndex) => {
+              if (tools[newIndex]) {
+                this.toggleHidden(tools[newIndex], true);
+              }
+            });
+          }
+        }
+      }
+    });
+  }
+
+  applySidebarTabs(hiddentabs) {
+    if (!hiddentabs?.length) return;
+
+    const sidebartabs = Array.from(this.sidebarItems);
+    hiddentabs.forEach((tabId) => {
+      const tab = sidebartabs.find((element) => element.dataset.tab === tabId);
+      if (tab) {
+        this.toggleHidden(tab, true);
+      } else {
+        console.log("Control concealer | couldn't find sidebar tab:", tabId);
+      }
+    });
+  }
+
+  updateDisplayState() {
+    this.elements.controls.classList.add('hide-active');
+    this.elements.sidebar.classList.add('hide-active');
+  }
+
+  handleValidationResults(validation) {
+    if (!validation.hasMismatch) return;
+
+    if (validation.hasUnfixedMismatch) {
+      ui.notifications.error('CONTROLCONCEALER.error.ControlMissmatch', { localize: true });
+    } else {
+      ui.notifications.warn('CONTROLCONCEALER.warning.ControlMissmatchFixed', { localize: true });
+      this.saveHiddenElements();
+    }
+  }
+
+  // Event Handlers
+  hideElement(event) {
+    this.toggleHidden(event.currentTarget);
+    this.saveHiddenElements();
+    return false;
+  }
+
+  hideSidebarElement(event) {
+    const targetTab = $(event.currentTarget).attr('data-original-tab');
+    const target = $(event.currentTarget).parent().parent().find(`.item[data-tab='${targetTab}']`)[0];
+    this.toggleHidden(target);
+    return false;
+  }
+}
+
+// Initialize the module
+(() => {
+  const controlConcealer = new ControlConcealer();
 })();
