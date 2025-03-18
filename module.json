@@ -39,7 +39,7 @@
       "path": "lang/en.json"
     }
   ],
-  "manifest": "",
+  "manifest": "https://github.com/Sayshal/control-concealer/releases/latest/module.json",
   "packs": [
     {
       "name": "control-concealer-examples",
