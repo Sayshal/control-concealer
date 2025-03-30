@@ -39,16 +39,7 @@
       "path": "lang/en.json"
     }
   ],
-  "manifest": "https://github.com/Sayshal/control-concealer/releases/latest/module.json",
-  "packs": [
-    {
-      "name": "control-concealer-examples",
-      "label": "Control Concealer Examples",
-      "path": "packs/control-concealer-examples.db",
-      "type": "Macro",
-      "package": "control-concealer"
-    }
-  ],
+  "manifest": "https://github.com/Sayshal/control-concealer/releases/latest/download/module.json",
   "styles": ["styles/control-concealer.css"],
   "url": "https://github.com/Sayshal/control-concealer"
 }

@@ -1,437 +1,553 @@
+/**
+ * Control Concealer Module
+ * Allows hiding any UI elements in the Foundry VTT interface
+ */
 class ControlConcealer {
-  constructor() {
-    this.state = {
-      view: 'prod',
-      isEditMode: false
-    };
-    this.bindEventHandlers();
-    this.initializeHooks();
+  static ID = 'control-concealer';
+
+  static FLAGS = {
+    PROFILES: 'profiles',
+    ACTIVE_PROFILE: 'activeProfile'
+  };
+
+  static DEFAULT_PROFILES = {
+    dev: { name: 'CONTROLCONCEALER.profile.dev', hiddenElements: {} },
+    prod: { name: 'CONTROLCONCEALER.profile.prod', hiddenElements: {} }
+  };
+
+  static SETTINGS = {
+    PROFILES: 'profiles'
+  };
+
+  // UI component selectors - these are the selectors for all UI elements we can hide
+  static UI_SELECTORS = [
+    // Scene controls
+    '#controls',
+    '.scene-control',
+    '.control-tool',
+    // Sidebar and tabs (separate each tab)
+    '#sidebar',
+    '#sidebar-tabs',
+    '#sidebar-tabs .item[data-tab="chat"]',
+    '#sidebar-tabs .item[data-tab="combat"]',
+    '#sidebar-tabs .item[data-tab="scenes"]',
+    '#sidebar-tabs .item[data-tab="actors"]',
+    '#sidebar-tabs .item[data-tab="items"]',
+    '#sidebar-tabs .item[data-tab="journal"]',
+    '#sidebar-tabs .item[data-tab="tables"]',
+    '#sidebar-tabs .item[data-tab="cards"]',
+    '#sidebar-tabs .item[data-tab="playlists"]',
+    '#sidebar-tabs .item[data-tab="compendium"]',
+    '#sidebar-tabs .item[data-tab="settings"]',
+    // Player list
+    '#players',
+    '#player-list .player',
+    // Hotbar
+    '#hotbar',
+    '#hotbar .macro',
+    '#hotbar .bar-controls',
+    // UI buttons (top row)
+    '#ui-top .scene-control',
+    // Navigation
+    '#navigation',
+    '#nav-toggle',
+    '#scene-list .scene',
+    // Chat
+    '#chat',
+    '#chat-controls',
+    '#chat-form',
+    // Combat
+    '#combat',
+    '#combat-tracker',
+    '#combat-controls',
+    // Audio controls
+    '#audio-controls',
+    // UI right side
+    '#ui-right .control',
+    // Various other UI elements
+    '#pause',
+    '#fps',
+    '#logo'
+  ];
+
+  static #instance = null;
+
+  /**
+   * Get the singleton instance of the module
+   * @returns {ControlConcealer}
+   */
+  static getInstance() {
+    if (!this.#instance) this.#instance = new ControlConcealer();
+    return this.#instance;
   }
 
-  // Core getters for commonly accessed elements
-  get elements() {
-    return {
-      controls: document.getElementById('controls'),
-      sidebar: document.getElementById('sidebar'),
-      sidebarTabs: document.getElementById('sidebar-tabs'),
-      controlConcealer: document.getElementById('control-concealer')
-    };
-  }
-
-  get sceneControls() {
-    return this.elements.controls.getElementsByClassName('scene-control');
-  }
-
-  get subControls() {
-    return this.elements.controls.getElementsByClassName('sub-controls');
-  }
-
-  get sidebarItems() {
-    return this.elements.sidebarTabs?.getElementsByClassName('item') ?? [];
-  }
-
-  get buttons() {
-    return {
-      config: $('#control-concealer .control-concealer-config'),
-      dev: $('#control-concealer .control-concealer-dev'),
-      prod: $('#control-concealer .control-concealer-prod')
-    };
-  }
-
-  // Initialization methods
-  initializeHooks() {
-    Hooks.once('canvasReady', () => this.initialize());
-    Hooks.on('renderSceneControls', (control, html, data) => this.onRenderSceneControls(control, html, data));
-  }
-
-  bindEventHandlers() {
-    this.hideElement = this.hideElement.bind(this);
-    this.hideSidebarElement = this.hideSidebarElement.bind(this);
-  }
-
-  async initialize() {
-    await this.loadHiddenElements();
-  }
-
-  // UI Setup and Controls
-  async onRenderSceneControls(control, html, data) {
-    await this.addControls(html);
-    await this.loadHiddenElements();
-
-    if (!this.elements.controlConcealer) return;
-
-    const configButton = this.elements.controlConcealer.getElementsByClassName('control-concealer-config')[0];
-    if (configButton?.classList.contains('active')) {
-      this.activateEditMode();
-    }
-  }
-
-  async addControls(html) {
-    const templateData = { myVar: 'Example value to be passed to handlebars' };
-    const templatePath = '/modules/control-concealer/templates/controlConcealerUI.html';
-    const controlHtml = await renderTemplate(templatePath, templateData);
-
-    html.find('.main-controls').prepend(controlHtml);
-    this.setupControlButtons(html);
-    this.updateButtons();
-  }
-
-  setupControlButtons(html) {
-    const buttons = {
-      config: html.find('#control-concealer .control-concealer-config'),
-      dev: html.find('#control-concealer .control-concealer-dev'),
-      prod: html.find('#control-concealer .control-concealer-prod')
-    };
-
-    buttons.config.click(() => this.toggleEditMode());
-    buttons.dev.click(() => this.setView('dev'));
-    buttons.prod.click(() => this.setView('prod'));
-  }
-
-  // View and Button Management
-  setView(newView) {
-    if (this.state.isEditMode) {
-      return ui.notifications.error('CONTROLCONCEALER.error.EditActive', { localize: true });
-    }
-
-    this.state.view = newView;
-    $(document).find('.scene-control.active').click();
-    this.updateButtons();
-  }
-
-  updateButtons() {
-    const buttons = this.buttons;
-    this.toggleActiveClass(buttons.dev[0], this.state.view === 'dev');
-    this.toggleActiveClass(buttons.prod[0], this.state.view === 'prod');
-    this.toggleActiveClass(buttons.config[0], this.state.isEditMode);
-    this.loadHiddenElements();
-  }
-
-  toggleActiveClass(element, isActive) {
-    element.classList.toggle('active', isActive);
-  }
-
-  // Edit Mode Management
-  toggleEditMode() {
-    this.state.isEditMode = !this.state.isEditMode;
-
-    if (this.state.isEditMode) {
-      this.activateEditMode();
-      ui.notifications.info('CONTROLCONCEALER.info.EditModeActive', { localize: true });
-    } else {
-      this.deactivateEditMode();
-      ui.notifications.info('CONTROLCONCEALER.info.EditModeEnd', { localize: true });
-    }
-  }
-
-  activateEditMode() {
-    this.elements.controls.classList.remove('hide-active');
-    this.elements.sidebar.classList.remove('hide-active');
-    this.addSidebarOverlay();
-    $('#controls').find('li').contextmenu(this.hideElement);
-  }
-
-  deactivateEditMode() {
-    this.saveHiddenElements();
-    this.elements.controls.classList.add('hide-active');
-    this.elements.sidebar.classList.add('hide-active');
-    this.removeSidebarOverlay();
-    $('#controls').find('li').off('contextmenu', this.hideElement);
-  }
-
-  // Element Management
-  addSidebarOverlay() {
-    const overlayCol = $('<div class="item-overlay-col tabs"></div>');
-    $('#sidebar-tabs').append(overlayCol);
-
-    const addOverlayItem = (element) => {
-      const overlay = $('<div>&nbsp;</div>').addClass('item-overlay').attr('data-original-tab', $(element).data('tab')).contextmenu(this.hideSidebarElement);
-      overlayCol.append(overlay);
-    };
-
-    $('#sidebar-tabs')
-      .find('.item, .collapse')
-      .each((_, element) => addOverlayItem(element));
-  }
-
-  removeSidebarOverlay() {
-    $('#sidebar-tabs').find('.item-overlay-col').remove();
-  }
-
-  // Element Visibility and Color Management
-  toggleHidden(element, value) {
-    if (this.shouldSkipElement(element)) return;
-
-    const shouldHide = value ?? !element.classList.contains('control-concealer-hide');
-    element.classList.toggle('control-concealer-hide', shouldHide);
-
-    if (shouldHide) {
-      this.invertElementColor(element);
-    } else {
-      this.resetElementColor(element);
-    }
-  }
-
-  resetAllHiddenStates() {
-    const scenecontrols = this.sceneControls;
-    const subcontrols = this.subControls;
-    const sidebartabs = this.sidebarItems;
-
-    [...scenecontrols].forEach((control) => this.toggleHidden(control, false));
-    [...subcontrols].forEach((subcontrol) => [...subcontrol.getElementsByClassName('control-tool')].forEach((tool) => this.toggleHidden(tool, false)));
-    [...sidebartabs].forEach((tab) => this.toggleHidden(tab, false));
-  }
-
-  shouldSkipElement(element) {
-    return element.classList.contains('control-concealer-top') || element.classList.contains('control-concealer-tab') || element.id === 'control-concealer';
-  }
-
-  invertElementColor(element) {
-    const style = window.getComputedStyle(element, null);
-    const colors = {
-      foreground: style.getPropertyValue('color'),
-      background: style.getPropertyValue('background-color')
-    };
-
-    element.dataset.originalColor = colors.foreground;
-    element.dataset.originalBackgroundColor = colors.background;
-
-    element.style.color = this.invertColor(colors.foreground);
-    element.style.backgroundColor = this.invertColor(colors.background);
-  }
-
-  resetElementColor(element) {
-    if (element.dataset.originalColor) {
-      element.style.color = element.dataset.originalColor;
-    }
-    if (element.dataset.originalBackgroundColor) {
-      element.style.backgroundColor = element.dataset.originalBackgroundColor;
-    }
-  }
-
-  invertColor(color) {
-    if (!color.startsWith('rgb')) return color;
-
-    const [type, values] = color.split('(');
-    const numbers = values.slice(0, -1).split(',').map(Number);
-    const inverted = numbers.map((value, i) => (i < 3 ? 255 - value : value));
-
-    return `${type}(${inverted.join(',')})`;
-  }
-
-  // Data Management and Validation
-  async saveHiddenElements() {
-    const controls = { hidden: [], tools: [] };
-    const hiddenTabs = [];
-
-    // Process scene controls and tools
-    Array.from(this.sceneControls).forEach((sceneControl, i) => {
-      const controlData = this.getControlData(sceneControl, i);
-
-      if (sceneControl.classList.contains('control-concealer-hide')) {
-        controls.hidden.push(controlData);
-        controls.tools.push({});
-      } else {
-        controls.hidden.push({});
-        const toolsData = this.processTools(this.subControls[i], i, controlData);
-        controls.tools.push(toolsData.hasHidden ? controlData : {});
-      }
-    });
-
-    // Process sidebar tabs
-    Array.from(this.sidebarItems).forEach((tab) => {
-      if (tab.classList.contains('control-concealer-hide')) {
-        hiddenTabs.push(tab.dataset.tab);
-      }
-    });
-
-    const saveTab = this.state.view === 'dev' ? 'dev-tab' : 'prod-tab';
-    await game.user.setFlag('control-concealer', saveTab, {
-      hiddencontrols: controls.hidden,
-      hiddentools: controls.tools,
-      hiddentabs: hiddenTabs
-    });
-  }
-
-  getControlData(control, index) {
-    const data = {};
-    const sourceControl = ui.controls.controls[index];
-
-    Object.entries(sourceControl)
-      .filter(([key]) => !['activeTool', 'tools', 'onClick'].includes(key))
-      .forEach(([key, value]) => (data[key] = value));
-
-    data.tools = [];
-    return data;
-  }
-
-  processTools(subcontrol, controlIndex, controlData) {
-    let hasHidden = false;
-    const tools = subcontrol?.getElementsByClassName('control-tool') ?? [];
-
-    Array.from(tools).forEach((tool, j) => {
-      if (tool.classList.contains('control-concealer-hide')) {
-        hasHidden = true;
-        controlData.tools.push(this.getControlData(tool, j));
-      } else {
-        controlData.tools.push({});
-      }
-    });
-
-    return { hasHidden, controlData };
-  }
-
-  async loadHiddenElements() {
-    const saveTab = this.state.view === 'dev' ? 'dev-tab' : 'prod-tab';
-    const tab = game.user.getFlag('control-concealer', saveTab) || {};
-    if (Object.keys(tab).length === 0) return;
-
-    this.resetAllHiddenStates();
-    const validation = this.validateControls(tab.hiddencontrols, tab.hiddentools);
-
-    if (validation.validControls.size > 0) {
-      this.applyValidatedControls(validation.validControls);
-    }
-
-    this.applySidebarTabs(tab.hiddentabs);
-    this.handleValidationResults(validation);
-    this.updateDisplayState();
-  }
-
-  compareObject(source, target) {
-    return Object.entries(source)
-      .filter(([key]) => !['activeTool', 'tools', 'onClick'].includes(key))
-      .every(([key, value]) => Object.prototype.hasOwnProperty.call(target, key) && target[key] === value);
-  }
-
-  validateControls(hiddenControls, hiddenTools) {
-    const results = {
-      hasMismatch: false,
-      hasUnfixedMismatch: false,
-      validControls: new Map()
-    };
-
-    hiddenControls.forEach((control, i) => {
-      if (Object.keys(control).length === 0) return;
-
-      const controlIndex = this.findControl(control);
-      if (controlIndex === -1) {
-        results.hasMismatch = results.hasUnfixedMismatch = true;
-        console.log("Control concealer | couldn't find control:", control);
-        return;
-      }
-
-      if (controlIndex !== i) results.hasMismatch = true;
-
-      results.validControls.set(i, {
-        originalIndex: i,
-        newIndex: controlIndex,
-        tools: this.validateTools(hiddenTools[i], controlIndex)
+  /**
+   * Main module initialization
+   */
+  static init() {
+    Hooks.once('init', () => {
+      game.settings.register(this.ID, this.SETTINGS.PROFILES, {
+        name: 'Control Concealer Profiles',
+        scope: 'client',
+        config: false,
+        type: Object,
+        default: {}
       });
+
+      // Load templates
+      loadTemplates([`modules/${this.ID}/templates/profile-buttons.hbs`]);
     });
 
-    return results;
+    Hooks.once('ready', () => {
+      this.getInstance().initialize();
+    });
+
+    // Register hooks for all UI renderings
+    Hooks.on('renderSceneControls', (app, html, data) => {
+      this.getInstance().onRenderUI(app, html, data);
+    });
+
+    Hooks.on('renderUI', (app, html, data) => {
+      this.getInstance().onRenderUI(app, html, data);
+    });
+
+    // For elements that might be dynamically added
+    Hooks.on('renderHotbar', () => this.getInstance().applyProfile());
+    Hooks.on('renderPlayerList', () => this.getInstance().applyProfile());
+    Hooks.on('renderChatLog', () => this.getInstance().applyProfile());
+    Hooks.on('renderCombatTracker', () => this.getInstance().applyProfile());
+    Hooks.on('canvasReady', () => this.getInstance().addProfileButtons());
+    Hooks.on('renderSceneNavigation', () => this.getInstance().addProfileButtons());
+    Hooks.on('renderSceneControls', () => this.getInstance().addProfileButtons());
   }
 
-  findControl(target) {
-    return ui.controls.controls.findIndex((control) => control.icon === target.icon && control.name === target.name && control.title === target.title);
+  constructor() {
+    this.editing = false;
+    this.activeProfile = 'prod'; // Default to production
+    this.profiles = this.getProfiles();
+    this.addedButtons = false;
   }
 
-  findTool(target, ctrl_index) {
-    if (!ui.controls.controls[ctrl_index]?.tools) return -1;
+  /**
+   * Initialize the module
+   */
+  initialize() {
+    // Migrate older data format if needed
+    this.migrateOldFormat();
 
-    return ui.controls.controls[ctrl_index].tools.findIndex((tool) => tool.icon === target.icon && tool.name === target.name && tool.title === target.title);
+    // Get active profile from user flags
+    const activeProfile = game.user.getFlag(ControlConcealer.ID, ControlConcealer.FLAGS.ACTIVE_PROFILE);
+    if (activeProfile) {
+      this.activeProfile = activeProfile;
+    }
+
+    // Add profile buttons to UI
+    this.addProfileButtons();
+
+    // Apply current profile
+    this.applyProfile();
   }
 
-  validateTools(tools, controlIndex) {
-    const validTools = new Map();
+  /**
+   * Handle UI rendering
+   */
+  onRenderUI(app, html, data) {
+    // Make sure our profile buttons exist
+    if (!this.addedButtons) {
+      this.addProfileButtons();
+    }
 
-    if (!tools || !tools.tools) return validTools;
+    // Apply profile settings
+    this.applyProfile();
 
-    tools.tools.forEach((tool, i) => {
-      if (Object.keys(tool).length === 0) return;
+    // Setup edit mode listeners if in edit mode
+    if (this.editing) {
+      this.setupEditModeListeners();
+    }
+  }
 
-      const toolIndex = this.findTool(tool, controlIndex);
-      if (toolIndex === -1) {
-        console.log("Control concealer | couldn't find tool:", tool);
+  /**
+   * Add profile buttons to the UI
+   */
+  addProfileButtons() {
+    // If the buttons are already there, no need to add them again
+    if ($('#control-concealer').length > 0) return;
+
+    const $controls = $('#controls');
+    if (!$controls.length) return;
+
+    const $mainControls = $controls.find('.main-controls');
+    if (!$mainControls.length) return;
+
+    this.renderProfileButtons($mainControls);
+    this.addedButtons = true;
+
+    // Set up a MutationObserver to detect when our buttons are removed
+    this.setupButtonObserver($mainControls);
+  }
+
+  setupButtonObserver(target) {
+    // Create a MutationObserver to watch for our buttons being removed
+    const observer = new MutationObserver((mutations) => {
+      if ($('#control-concealer').length === 0) {
+        // Our buttons were removed, add them back
+        this.renderProfileButtons(target);
+      }
+    });
+
+    // Start observing the target
+    observer.observe(target[0], { childList: true, subtree: true });
+  }
+
+  /**
+   * Render the profile selection buttons
+   */
+  async renderProfileButtons(target) {
+    const templateData = {
+      activeProfile: this.activeProfile,
+      editing: this.editing,
+      profiles: Object.entries(this.profiles).map(([id, profile]) => {
+        return {
+          id,
+          name: game.i18n.localize(profile.name),
+          active: id === this.activeProfile
+        };
+      }),
+      showResetButton: true
+    };
+
+    const html = await renderTemplate(`modules/${ControlConcealer.ID}/templates/profile-buttons.hbs`, templateData);
+    target.append(html);
+
+    // Attach event listeners
+    const container = target.find('#control-concealer');
+    container.find('.profile-button').click(this.#onProfileButtonClick.bind(this));
+    container.find('.edit-button').click(this.#onEditButtonClick.bind(this));
+    container.find('.reset-button').click(() => this.resetActiveProfile());
+  }
+
+  /**
+   * Setup listeners for edit mode
+   */
+  setupEditModeListeners() {
+    // Remove any existing right-click handlers first
+    $(document).off('contextmenu.control-concealer');
+
+    // Add right-click handlers to all UI elements
+    $(document).on('contextmenu.control-concealer', ControlConcealer.UI_SELECTORS.join(', '), this.#onRightClickElement.bind(this));
+
+    // Also prevent context menu globally when in edit mode
+    $(document).on('contextmenu.control-concealer-global', (event) => {
+      if (this.editing) {
+        event.preventDefault();
+        return false;
+      }
+    });
+
+    // Special handling for hotbar elements that have built-in context menus
+    $('#hotbar .macro').on('contextmenu.control-concealer-hotbar', (event) => {
+      if (this.editing) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const $target = $(event.currentTarget);
+        $target.toggleClass('control-concealer-hide');
+
+        return false;
+      }
+    });
+
+    // Special handling for sidebar tabs
+    $('#sidebar-tabs .item').on('contextmenu.control-concealer-sidebar', (event) => {
+      if (this.editing) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const $target = $(event.currentTarget);
+        $target.toggleClass('control-concealer-hide');
+
+        return false;
+      }
+    });
+
+    // Apply visual indicators for already hidden elements
+    this.applyVisualState();
+  }
+
+  /**
+   * Apply the current hidden state visually (for edit mode)
+   */
+  applyVisualState() {
+    const profile = this.profiles[this.activeProfile];
+    if (!profile) return;
+
+    // Reset all visual states
+    $(ControlConcealer.UI_SELECTORS.join(', ')).removeClass('control-concealer-hide');
+
+    // Apply hidden elements
+    Object.entries(profile.hiddenElements || {}).forEach(([selector, isHidden]) => {
+      if (isHidden) {
+        $(selector).addClass('control-concealer-hide');
+      }
+    });
+  }
+
+  /**
+   * Apply the selected profile
+   */
+  applyProfile(profileId) {
+    if (profileId) {
+      if (this.editing) {
+        ui.notifications.error(game.i18n.localize('CONTROLCONCEALER.error.EditActive'));
         return;
       }
 
-      validTools.set(i, toolIndex);
-    });
+      if (this.profiles[profileId]) {
+        this.activeProfile = profileId;
+        game.user.setFlag(ControlConcealer.ID, ControlConcealer.FLAGS.ACTIVE_PROFILE, profileId);
 
-    return validTools;
+        // Update the active button state
+        $('#control-concealer .profile-button').removeClass('active');
+        $(`#control-concealer .profile-button[data-profile="${profileId}"]`).addClass('active');
+      }
+    }
+
+    const profile = this.profiles[this.activeProfile];
+    if (!profile) return;
+
+    // Reset visibility for all UI elements
+    $(ControlConcealer.UI_SELECTORS.join(', ')).removeClass('control-concealer-hide');
+
+    if (!this.editing) {
+      // Add hide-active class to actually hide elements
+      $('body').addClass('cc-hide-active');
+
+      // Apply hidden elements
+      Object.entries(profile.hiddenElements || {}).forEach(([selector, isHidden]) => {
+        if (isHidden) {
+          // For sidebar tabs, we need special handling
+          if (selector.startsWith('#sidebar-tabs .item[data-tab=')) {
+            // Mark tab for hiding without affecting the sidebar itself
+            $(selector).addClass('control-concealer-hide');
+          } else {
+            $(selector).addClass('control-concealer-hide');
+          }
+        }
+      });
+    } else {
+      // In edit mode, show all elements but apply visual indicators
+      $('body').removeClass('cc-hide-active');
+      this.applyVisualState();
+    }
   }
 
-  applyValidatedControls(validControls) {
-    const scenecontrols = this.sceneControls;
-    const subcontrols = this.subControls;
+  /**
+   * Reset the currently active profile by unhiding all elements
+   */
+  resetActiveProfile() {
+    if (!this.profiles[this.activeProfile]) return;
 
-    validControls.forEach((data, i) => {
-      const control = scenecontrols[data.newIndex];
-      if (control) {
-        this.toggleHidden(control, true);
+    // Reset to empty hidden elements object
+    this.profiles[this.activeProfile].hiddenElements = {};
 
-        if (data.tools.size > 0) {
-          const tools = subcontrols[data.newIndex]?.getElementsByClassName('control-tool');
-          if (tools) {
-            data.tools.forEach((newIndex, originalIndex) => {
-              if (tools[newIndex]) {
-                this.toggleHidden(tools[newIndex], true);
+    // Save profiles
+    this.saveProfiles();
+
+    // Reapply the profile to update the UI
+    this.applyProfile(this.activeProfile);
+
+    ui.notifications.info(`Profile "${game.i18n.localize(this.profiles[this.activeProfile].name)}" has been reset. All elements are now visible.`);
+  }
+
+  /**
+   * Toggle edit mode
+   */
+  toggleEditMode() {
+    this.editing = !this.editing;
+
+    if (this.editing) {
+      // Start editing
+      $('body').removeClass('cc-hide-active');
+      ui.notifications.info(game.i18n.localize('CONTROLCONCEALER.info.EditModeActive'));
+      this.setupEditModeListeners();
+    } else {
+      // End editing
+      this.saveCurrentProfile();
+      $('body').addClass('cc-hide-active');
+      ui.notifications.info(game.i18n.localize('CONTROLCONCEALER.info.EditModeEnd'));
+
+      // Remove the contextmenu event handlers
+      $(document).off('contextmenu.control-concealer');
+      $(document).off('contextmenu.control-concealer-global');
+      $('#hotbar .macro').off('contextmenu.control-concealer-hotbar');
+      $('#sidebar-tabs .item').off('contextmenu.control-concealer-sidebar');
+    }
+
+    // Update button state
+    const $editButton = $('#control-concealer .edit-button');
+    $editButton.toggleClass('active', this.editing);
+
+    // Refresh profile
+    this.applyProfile();
+  }
+
+  /**
+   * Save the current profile
+   */
+  saveCurrentProfile() {
+    const hiddenElements = {};
+
+    // For each UI selector, check if any matching elements are hidden
+    ControlConcealer.UI_SELECTORS.forEach((selector) => {
+      const $elements = $(selector);
+      if ($elements.length) {
+        hiddenElements[selector] = $elements.hasClass('control-concealer-hide');
+      }
+    });
+
+    // Update profile
+    this.profiles[this.activeProfile] = {
+      ...this.profiles[this.activeProfile],
+      hiddenElements
+    };
+
+    // Save to user's settings
+    this.saveProfiles();
+  }
+
+  /**
+   * Get profiles from settings
+   */
+  getProfiles() {
+    // Get saved profiles or use defaults
+    const savedProfiles = game.settings.get(ControlConcealer.ID, ControlConcealer.SETTINGS.PROFILES);
+
+    // Merge with defaults to ensure all default profiles exist
+    return foundry.utils.mergeObject(foundry.utils.deepClone(ControlConcealer.DEFAULT_PROFILES), savedProfiles || {});
+  }
+
+  /**
+   * Save profiles to settings
+   */
+  saveProfiles() {
+    game.settings.set(ControlConcealer.ID, ControlConcealer.SETTINGS.PROFILES, this.profiles);
+  }
+
+  /**
+   * Migrate data from old format if needed
+   */
+  migrateOldFormat() {
+    const devTab = game.user.getFlag(ControlConcealer.ID, 'dev-tab');
+    const prodTab = game.user.getFlag(ControlConcealer.ID, 'prod-tab');
+
+    if (devTab || prodTab) {
+      if (devTab) {
+        const hiddenElements = {};
+
+        // Convert old data structure to new format
+        Object.entries(devTab.hiddencontrols || {}).forEach(([index, controlData]) => {
+          if (Object.keys(controlData).length > 0) {
+            hiddenElements[`.scene-control:nth-child(${parseInt(index) + 1})`] = true;
+          }
+        });
+
+        Object.entries(devTab.hiddentools || {}).forEach(([controlIndex, toolsData]) => {
+          if (Object.keys(toolsData).length > 0 && toolsData.tools) {
+            toolsData.tools.forEach((toolData, toolIndex) => {
+              if (Object.keys(toolData).length > 0) {
+                hiddenElements[`.scene-control:nth-child(${parseInt(controlIndex) + 1}) + .sub-controls .control-tool:nth-child(${parseInt(toolIndex) + 1})`] = true;
               }
             });
           }
-        }
+        });
+
+        (devTab.hiddentabs || []).forEach((tabId) => {
+          hiddenElements[`#sidebar-tabs .item[data-tab="${tabId}"]`] = true;
+        });
+
+        this.profiles.dev = {
+          name: 'CONTROLCONCEALER.profile.dev',
+          hiddenElements
+        };
       }
-    });
-  }
 
-  applySidebarTabs(hiddentabs) {
-    if (!hiddentabs?.length) return;
+      if (prodTab) {
+        const hiddenElements = {};
 
-    const sidebartabs = Array.from(this.sidebarItems);
-    hiddentabs.forEach((tabId) => {
-      const tab = sidebartabs.find((element) => element.dataset.tab === tabId);
-      if (tab) {
-        this.toggleHidden(tab, true);
-      } else {
-        console.log("Control concealer | couldn't find sidebar tab:", tabId);
+        // Convert old data structure to new format
+        Object.entries(prodTab.hiddencontrols || {}).forEach(([index, controlData]) => {
+          if (Object.keys(controlData).length > 0) {
+            hiddenElements[`.scene-control:nth-child(${parseInt(index) + 1})`] = true;
+          }
+        });
+
+        Object.entries(prodTab.hiddentools || {}).forEach(([controlIndex, toolsData]) => {
+          if (Object.keys(toolsData).length > 0 && toolsData.tools) {
+            toolsData.tools.forEach((toolData, toolIndex) => {
+              if (Object.keys(toolData).length > 0) {
+                hiddenElements[`.scene-control:nth-child(${parseInt(controlIndex) + 1}) + .sub-controls .control-tool:nth-child(${parseInt(toolIndex) + 1})`] = true;
+              }
+            });
+          }
+        });
+
+        (prodTab.hiddentabs || []).forEach((tabId) => {
+          hiddenElements[`#sidebar-tabs .item[data-tab="${tabId}"]`] = true;
+        });
+
+        this.profiles.prod = {
+          name: 'CONTROLCONCEALER.profile.prod',
+          hiddenElements
+        };
       }
-    });
-  }
 
-  updateDisplayState() {
-    this.elements.controls.classList.add('hide-active');
-    this.elements.sidebar.classList.add('hide-active');
-  }
+      // Save migrated data
+      this.saveProfiles();
 
-  handleValidationResults(validation) {
-    if (!validation.hasMismatch) return;
-
-    if (validation.hasUnfixedMismatch) {
-      ui.notifications.error('CONTROLCONCEALER.error.ControlMissmatch', { localize: true });
-    } else {
-      ui.notifications.warn('CONTROLCONCEALER.warning.ControlMissmatchFixed', { localize: true });
-      this.saveHiddenElements();
+      // Clean up old flags
+      game.user.unsetFlag(ControlConcealer.ID, 'dev-tab');
+      game.user.unsetFlag(ControlConcealer.ID, 'prod-tab');
     }
   }
 
-  // Event Handlers
-  hideElement(event) {
-    this.toggleHidden(event.currentTarget);
-    this.saveHiddenElements();
-    return false;
+  /**
+   * Handle profile button click
+   */
+  #onProfileButtonClick(event) {
+    event.preventDefault();
+    const profileId = event.currentTarget.dataset.profile;
+
+    // Update active button visually before applying profile
+    $('#control-concealer .profile-button').removeClass('active');
+    $(event.currentTarget).addClass('active');
+
+    this.applyProfile(profileId);
   }
 
-  hideSidebarElement(event) {
-    const targetTab = $(event.currentTarget).attr('data-original-tab');
-    const target = $(event.currentTarget).parent().parent().find(`.item[data-tab='${targetTab}']`)[0];
-    this.toggleHidden(target);
-    return false;
+  /**
+   * Handle edit button click
+   */
+  #onEditButtonClick(event) {
+    event.preventDefault();
+    this.toggleEditMode();
+  }
+
+  /**
+   * Handle right-click on any UI element
+   */
+  #onRightClickElement(event) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    // Get the clicked element
+    const $target = $(event.currentTarget);
+
+    // Toggle the hidden state
+    $target.toggleClass('control-concealer-hide');
+
+    return false; // This already exists, which is good
   }
 }
 
 // Initialize the module
-(() => {
-  const controlConcealer = new ControlConcealer();
-})();
+ControlConcealer.init();

@@ -1,0 +1,25 @@
+<li class="control-concealer-top">
+	<ol id="control-concealer" class="app flexrow">
+		{{#each profiles}}
+			<li class="control-concealer-tab profile-button {{#if active}}active{{/if}}"
+				title="{{localize "CONTROLCONCEALER.button.profile"}} {{name}}" data-profile="{{id}}">
+				<span>
+					{{#if (eq id "dev")}}
+						{{localize "CONTROLCONCEALER.button.dev-initial"}}
+					{{else if (eq id "prod")}}
+						{{localize "CONTROLCONCEALER.button.prod-initial"}}
+					{{else}}
+						{{name}}
+					{{/if}}
+				</span>
+			</li>
+		{{/each}}
+		{{#if showResetButton}}
+			<li class="control-concealer-tab reset-button" title="{{localize "CONTROLCONCEALER.button.reset.title"}}">
+				<span>{{localize "CONTROLCONCEALER.button.reset.label"}}</span>
+			</li>
+		{{/if}}
+		<li class="control-concealer-tab edit-button {{#if editing}}active{{/if}} fas fa-wrench"
+			title="{{localize "CONTROLCONCEALER.button.edit"}}"></li>
+	</ol>
+</li>
